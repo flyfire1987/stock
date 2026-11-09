@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小小投资家 · 股票+黄金模拟盘</title>
+  <link rel="stylesheet" href="static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部 -->
+    <header class="topbar">
+      <div class="brand">🐷 小小投资家</div>
+      <div class="tabs">
+        <button v-for="t in tabs" :key="t.key" :class="{active: tab===t.key}" @click="tab=t.key">
+          {{ t.label }}
+        </button>
+      </div>
+      <div class="header-right">
+        <button class="btn-mini" @click="refreshData">🔄 刷新行情</button>
+        <a class="btn-mini btn-portal" href="/" title="返回门户首页">🏠 返回门户</a>
+      </div>
+    </header>
+
+    <!-- 总览卡片 -->
+    <section class="overview">
+      <div class="card">
+        <div class="card-label">总资产</div>
+        <div class="card-value">¥{{ fmt(acc.total_assets) }}</div>
+      </div>
+      <div class="card" :class="profitClass">
+        <div class="card-label">总收益</div>
+        <div class="card-value">{{ acc.total_profit>=0?'+':'' }}{{ fmt(acc.total_profit) }}</div>
+        <div class="card-sub">{{ pct(acc.total_profit_rate) }}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">可用现金</div>
+        <div class="card-value">¥{{ fmt(acc.cash) }}</div>
+        <div class="card-sub">
+          <button class="link" @click="showTransfer=true">💸 转入/转出</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">累计手续费</div>
+        <div class="card-value">¥{{ fmt(acc.total_fee) }}</div>
+        <div class="card-sub">万分之一 · 最低 1 元</div>
+      </div>
+    </section>
+
+    <!-- 各 tab 内容 -->
+    <main>
+      <!-- Tab: 行情 -->
+      <section v-show="tab==='market'">
+        <div class="toolbar">
+          <h2>📈 行情</h2>
+          <div class="filter">
+            <input v-model="search" placeholder="搜索股票/黄金..." />
+          </div>
+        </div>
+        <div class="sector-tabs">
+          <button :class="{active: sectorFilter==='all'}" @click="sectorFilter='all'">全部</button>
+          <button :class="{active: sectorFilter==='红利'}" @click="sectorFilter='红利'">🟢 红利</button>
+          <button :class="{active: sectorFilter==='军工'}" @click="sectorFilter='军工'">🪖 军工</button>
+          <button :class="{active: sectorFilter==='科技'}" @click="sectorFilter='科技'">💻 科技</button>
+          <button :class="{active: sectorFilter==='gold'}" @click="sectorFilter='gold'">🥇 黄金</button>
+        </div>
+        <div class="quote-grid">
+          <div v-for="q in filteredPortfolio" :key="q.code" class="quote-card" @click="openKline(q)">
+            <div class="qc-head">
+              <span class="qc-name">{{ q.name }}</span>
+              <span class="qc-tag" :class="'tag-'+(q.sector||q.asset_type)">{{ q.sector || (q.asset_type==='gold'?'黄金':'股票') }}</span>
+            </div>
+            <div class="qc-code">{{ q.code }} · {{ q.category || '' }}</div>
+            <div class="qc-price">
+              <template v-if="q._quoteState === 'loading' || !q._quoteState">
+                <span class="placeholder">加载中...</span>
+              </template>
+              <template v-else-if="q._quoteState === 'fail'">
+                <span class="placeholder">暂无</span>
+              </template>
+              <template v-else>
+                <span>¥{{ fmt(q._price) }}</span>
+                <span class="pct" :class="q._pct >= 0 ? 'up' : 'down'">
+                  {{ q._pct >= 0 ? '+' : '' }}{{ q._pct.toFixed(2) }}%
+                </span>
+              </template>
+            </div>
+            <div class="qc-tagline">{{ q.tag || '' }}</div>
+          </div>
+          <div v-if="!filteredPortfolio.length" class="empty" style="grid-column: 1/-1">该板块暂无标的</div>
+        </div>
+      </section>
+
+      <!-- Tab: K线详情 -->
+      <section v-show="tab==='kline'">
+        <div v-if="!currentKline.code" class="empty">← 点上面行情卡片查看 K 线</div>
+        <div v-else>
+          <div class="toolbar">
+            <h2>📊 {{ currentKline.name }} <span class="muted">({{ currentKline.code }})</span></h2>
+            <div class="right">
+              <span class="latest">最新: ¥{{ fmt(currentKline.latest_price) }} · {{ currentKline.latest_date }}</span>
+              <span v-if="currentKline.market_cap" class="muted">市值 {{ fmt(currentKline.market_cap/1e8) }} 亿</span>
+            </div>
+          </div>
+          <div id="kline-chart" class="chart"></div>
+          <div class="trade-box">
+            <div class="trade-row">
+              <label>买入数量</label>
+              <input type="number" v-model.number="buyShares" min="1" />
+              <span class="muted">≈ ¥{{ fmt(buyShares * (currentKline.latest_price||0)) }} + 手续费 ¥{{ calcFee(buyShares * (currentKline.latest_price||0)) }}</span>
+              <button class="btn-buy" @click="doBuy">买入</button>
+            </div>
+            <div class="trade-row" v-if="myPosition">
+              <label>卖出数量</label>
+              <input type="number" v-model.number="sellShares" :min="1" :max="myPosition.shares" />
+              <span class="muted">持有 {{ fmt(myPosition.shares) }}, 当前盈亏 {{ pct(myPosition.profit_rate) }}</span>
+              <button class="btn-sell" @click="doSell">卖出</button>
+            </div>
+            <div class="note">
+              <input v-model="tradeNote" placeholder="备注(可选): 买入理由..." />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab: 持仓 -->
+      <section v-show="tab==='positions'">
+        <h2>💼 我的持仓</h2>
+        <table v-if="acc.positions.length" class="tbl">
+          <thead>
+            <tr><th>代码</th><th>名称</th><th>类型</th><th>数量</th><th>成本</th><th>现价</th><th>市值</th><th>盈亏</th><th>收益率</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in acc.positions" :key="p.code">
+              <td>{{ p.code }}</td>
+              <td>{{ p.name }}</td>
+              <td>{{ p.asset_type==='stock'?'股票':'黄金' }}</td>
+              <td>{{ fmt(p.shares) }}</td>
+              <td>¥{{ fmt(p.cost_price) }}</td>
+              <td>¥{{ fmt(p.current_price) }}</td>
+              <td>¥{{ fmt(p.market_value) }}</td>
+              <td :class="p.profit>=0?'profit-pos':'profit-neg'">{{ p.profit>=0?'+':'' }}{{ fmt(p.profit) }}</td>
+              <td :class="p.profit>=0?'profit-pos':'profit-neg'">{{ pct(p.profit_rate) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="empty">还没有持仓，去「行情」选一只开始你的第一笔投资吧!</div>
+      </section>
+
+      <!-- Tab: 收益曲线 -->
+      <section v-show="tab==='pnl'">
+        <h2>📈 收益曲线</h2>
+        <div class="toolbar">
+          <button v-for="d in [7,30,90]" :key="d" :class="{active: pnlDays===d}" @click="loadPnl(d)">{{ d }}天</button>
+          <button @click="snapshotNow">📸 立即快照</button>
+        </div>
+        <div id="pnl-chart" class="chart"></div>
+        <div v-if="!pnlCurve.length" class="empty">暂无数据 — 每天 16:30 自动记录今日收益, 或者点上面「立即快照」手动生成一个起点</div>
+        <table v-if="pnlCurve.length" class="tbl">
+          <thead><tr><th>日期</th><th>总资产</th><th>收益</th><th>收益率</th><th>沪深300</th></tr></thead>
+          <tbody>
+            <tr v-for="p in pnlCurve.slice().reverse()" :key="p.date">
+              <td>{{ p.date }}</td>
+              <td>¥{{ fmt(p.total_assets) }}</td>
+              <td :class="p.profit>=0?'profit-pos':'profit-neg'">{{ p.profit>=0?'+':'' }}{{ fmt(p.profit) }}</td>
+              <td :class="p.profit>=0?'profit-pos':'profit-neg'">{{ pct(p.profit_rate) }}</td>
+              <td>{{ p.base_index ? fmt(p.base_index) : '-' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Tab: 交易记录 -->
+      <section v-show="tab==='history'">
+        <h2>📜 交易记录</h2>
+        <table v-if="trades.length" class="tbl">
+          <thead><tr><th>时间</th><th>代码</th><th>名称</th><th>方向</th><th>价格</th><th>数量</th><th>金额</th><th>手续费</th><th>余额</th><th>备注</th></tr></thead>
+          <tbody>
+            <tr v-for="t in trades" :key="t.id">
+              <td>{{ t.created_at }}</td>
+              <td>{{ t.code }}</td>
+              <td>{{ t.name }}</td>
+              <td :class="t.side==='buy'?'side-buy':'side-sell'">{{ t.side==='buy'?'买入':'卖出' }}</td>
+              <td>¥{{ fmt(t.price) }}</td>
+              <td>{{ fmt(t.shares) }}</td>
+              <td>¥{{ fmt(t.amount) }}</td>
+              <td>¥{{ fmt(t.fee) }}</td>
+              <td>¥{{ fmt(t.cash_after) }}</td>
+              <td>{{ t.note }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-else class="empty">还没有交易记录</div>
+      </section>
+    </main>
+
+    <!-- 转入转出弹窗 -->
+    <div v-if="showTransfer" class="modal-bg" @click.self="showTransfer=false">
+      <div class="modal">
+        <h3>💸 转入 / 转出</h3>
+        <div class="row">
+          <label>方向</label>
+          <select v-model="transfer.direction">
+            <option value="in">转入(增加现金)</option>
+            <option value="out">转出(减少现金)</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>金额</label>
+          <input type="number" v-model.number="transfer.amount" min="1" />
+        </div>
+        <div class="row">
+          <label>备注</label>
+          <input v-model="transfer.note" placeholder="压岁钱 / 奖学金 / ... " />
+        </div>
+        <div class="row-actions">
+          <button @click="showTransfer=false">取消</button>
+          <button class="btn-buy" @click="doTransfer">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 交易成功提示 -->
+    <div v-if="toast.msg" class="toast" :class="toast.type">
+      <div>{{ toast.msg }}</div>
+      <div v-if="toast.edu" class="toast-edu">{{ toast.edu }}</div>
+    </div>
+  </div>
+
+  <!-- Vue3 + ECharts CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/echarts@5/dist/echarts.min.js"></script>
+  <script src="static/app.js"></script>
+</body>
+</html>

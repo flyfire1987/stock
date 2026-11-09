@@ -1,0 +1,315 @@
+# ============================================================
+# 股票+黄金模拟盘 - 配置文件
+# 修改后刷新页面即可生效（后端会热加载）
+# ============================================================
+
+# ===== 标的池 =====
+portfolio:
+  # ===== 红利板块 (高股息、稳健蓝筹) =====
+  stocks:
+    # --- 红利 (10只) ---
+    - code: "601398"
+      name: "工商银行"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "简单"
+      tag: "宇宙行,股息率5%+"
+      enabled: true
+    - code: "601939"
+      name: "建设银行"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "简单"
+      tag: "大行,分红稳定"
+      enabled: true
+    - code: "601288"
+      name: "农业银行"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "简单"
+      tag: "高股息,破净"
+      enabled: true
+    - code: "600028"
+      name: "中国石化"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "中等"
+      tag: "稳定分红,能源"
+      enabled: true
+    - code: "601857"
+      name: "中国石油"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "中等"
+      tag: "能源巨头"
+      enabled: true
+    - code: "600938"
+      name: "中国海油"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "中等"
+      tag: "海上油气,高分红"
+      enabled: true
+    - code: "000651"
+      name: "格力电器"
+      market: "SZ"
+      category: "红利"
+      sector: "红利"
+      difficulty: "简单"
+      tag: "家电龙头,高分红"
+      enabled: true
+    - code: "600887"
+      name: "伊利股份"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "简单"
+      tag: "乳业,稳定分红"
+      enabled: true
+    - code: "601088"
+      name: "中国神华"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "中等"
+      tag: "煤炭,分红之王"
+      enabled: true
+    - code: "600188"
+      name: "兖矿能源"
+      market: "SH"
+      category: "红利"
+      sector: "红利"
+      difficulty: "中等"
+      tag: "煤炭,高分红"
+      enabled: true
+    - code: "000001"
+      name: "平安银行"
+      market: "SZ"
+      category: "红利"
+      sector: "红利"
+      difficulty: "简单"
+      tag: "零售银行,高股息"
+      enabled: true
+
+    # --- 军工 (10只) ---
+    - code: "600760"
+      name: "中航沈飞"
+      market: "SH"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "战机龙头"
+      enabled: true
+    - code: "600316"
+      name: "洪都航空"
+      market: "SH"
+      category: "军工"
+      sector: "军工"
+      difficulty: "复杂"
+      tag: "教练机/无人机"
+      enabled: true
+    - code: "600038"
+      name: "中直股份"
+      market: "SH"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "直升机"
+      enabled: true
+    - code: "002025"
+      name: "航天电器"
+      market: "SZ"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "军用电连接器"
+      enabled: true
+    - code: "002179"
+      name: "中航光电"
+      market: "SZ"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "军工连接器龙头"
+      enabled: true
+    - code: "000768"
+      name: "中航西飞"
+      market: "SZ"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "运输机/轰炸机"
+      enabled: true
+    - code: "600893"
+      name: "航发动力"
+      market: "SH"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "航空发动机"
+      enabled: true
+    - code: "600435"
+      name: "北方导航"
+      market: "SH"
+      category: "军工"
+      sector: "军工"
+      difficulty: "中等"
+      tag: "导航制导"
+      enabled: true
+    - code: "002446"
+      name: "盛路通信"
+      market: "SZ"
+      category: "军工"
+      sector: "军工"
+      difficulty: "复杂"
+      tag: "军工通信"
+      enabled: true
+    - code: "300034"
+      name: "钢研高纳"
+      market: "SZ"
+      category: "军工"
+      sector: "军工"
+      difficulty: "复杂"
+      tag: "高温合金,军工材料"
+      enabled: true
+
+    # --- 科技 (10只) ---
+    - code: "688981"
+      name: "中芯国际"
+      market: "SH"
+      category: "科技"
+      sector: "科技"
+      difficulty: "中等"
+      tag: "晶圆代工龙头"
+      enabled: true
+    - code: "688041"
+      name: "海光信息"
+      market: "SH"
+      category: "科技"
+      sector: "科技"
+      difficulty: "复杂"
+      tag: "国产CPU/DC"
+      enabled: true
+    - code: "688256"
+      name: "寒武纪"
+      market: "SH"
+      category: "科技"
+      sector: "科技"
+      difficulty: "复杂"
+      tag: "AI芯片,波动大"
+      enabled: true
+    - code: "688008"
+      name: "澜起科技"
+      market: "SH"
+      category: "科技"
+      sector: "科技"
+      difficulty: "复杂"
+      tag: "内存接口芯片"
+      enabled: true
+    - code: "002230"
+      name: "科大讯飞"
+      market: "SZ"
+      category: "科技"
+      sector: "科技"
+      difficulty: "中等"
+      tag: "AI大模型"
+      enabled: true
+    - code: "300059"
+      name: "东方财富"
+      market: "SZ"
+      category: "科技"
+      sector: "科技"
+      difficulty: "简单"
+      tag: "互联网券商"
+      enabled: true
+    - code: "002415"
+      name: "海康威视"
+      market: "SZ"
+      category: "科技"
+      sector: "科技"
+      difficulty: "中等"
+      tag: "安防AI龙头"
+      enabled: true
+    - code: "000063"
+      name: "中兴通讯"
+      market: "SZ"
+      category: "科技"
+      sector: "科技"
+      difficulty: "中等"
+      tag: "5G/通信设备"
+      enabled: true
+    - code: "300661"
+      name: "圣邦股份"
+      market: "SZ"
+      category: "科技"
+      sector: "科技"
+      difficulty: "复杂"
+      tag: "模拟芯片"
+      enabled: true
+    - code: "300750"
+      name: "宁德时代"
+      market: "SZ"
+      category: "科技"
+      sector: "科技"
+      difficulty: "中等"
+      tag: "电池一哥"
+      enabled: true
+
+  # 黄金（多品种便于对比）
+  gold:
+    - code: "Au99.99"
+      name: "上海金Au99.99"
+      unit: "元/克"
+      source: "sge"
+      enabled: true
+    - code: "518880"
+      name: "华安黄金ETF"
+      unit: "元/份"
+      source: "akshare"
+      market: "SH"
+      enabled: true
+
+# ===== 数据源 =====
+data_source:
+  stock_api: "akshare"
+  retry_times: 3
+  cache_dir: "./data/cache/"
+  kline_keep_days: 90
+
+# ===== 账户 =====
+account:
+  initial_cash: 10000
+  currency: "CNY"
+  fee_rate: 0.0001
+  fee_min: 1.0
+
+# ===== 风控 =====
+risk:
+  daily_buy_limit: 200000
+  daily_trade_limit: 10
+  trading_hours_only: false
+
+# ===== 教育提示 =====
+education:
+  popups:
+    - trigger: "first_buy"
+      title: "🎓 第一次买入！"
+      content: "买入前先问自己：这家公司在做什么生意？为什么选它而不是别的？把答案记下来，过段时间看看对不对。"
+    - trigger: "loss_5pct"
+      title: "📉 亏了5%"
+      content: "市场短期波动是正常的。历史上A股任意时点持有3年，赚钱概率超过70%。关键是要选好公司、不要追涨杀跌。"
+    - trigger: "fee_min"
+      title: "💡 手续费小知识"
+      content: "你这次因为金额太小，手续费按最低1元收。现实中买100元股票，单手续费就占了1%！所以散户要么买够金额，要么长期持有。"
+
+# ===== 应用 =====
+app:
+  host: "0.0.0.0"
+  port: 8088
+  title: "小小投资家 · 股票+黄金模拟盘"
