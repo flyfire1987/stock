@@ -98,10 +98,17 @@ def fetch_stock_market_cap(code: str) -> Optional[Dict]:
 
 
 def fetch_gold_etf_kline(code: str, days: int = 120) -> Optional[pd.DataFrame]:
-    """拉黄金ETF日线 (518880 等). 优先 em, fallback 上金所基准"""
+    """拉黄金ETF日线 (518880 等). 优先 em, 备 sina。
+
+    ⚠️ 绝不能 fallback 到上金所基准金价:
+    SGE 是「元/克」的基准金价(800+), ETF 是「元/份」的基金份额(8.x)。
+    混写会把 ETF 价位污染成金价(历史故障: 518880 有 56 天 close 是 800+)。
+    ETF 拿不到就返回 None, 宁可空缺也不污染。
+    """
     import akshare as ak
     end_d = datetime.now().strftime("%Y%m%d")
     start_d = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+    start_d_iso = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     def _em():
         df = ak.fund_etf_hist_em(
@@ -118,18 +125,72 @@ def fetch_gold_etf_kline(code: str, days: int = 120) -> Optional[pd.DataFrame]:
         df["turnover"] = None
         return df[["date", "open", "close", "high", "low", "volume", "amount", "turnover"]]
 
+    def _sina():
+        # 新浪 ETF 日线: em 挂掉时的可靠备源(2026-11 实测可用)
+        market = "sh" if code.startswith(("5", "6", "9")) else "sz"
+        df = ak.fund_etf_hist_sina(symbol=f"{market}{code}")
+        if df is None or df.empty:
+            return None
+        df = df.rename(columns={
+            "date": "date", "open": "open", "close": "close",
+            "high": "high", "low": "low", "volume": "volume", "amount": "amount",
+        })
+        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        # 注意: start_d 是 %Y%m%d, 而 date 已是 %Y-%m-%d, 必须转成同一格式再比
+        df = df[df["date"] >= start_d_iso]
+        df["turnover"] = None
+        return df[["date", "open", "close", "high", "low", "volume", "amount", "turnover"]]
+
     r = _retry(_em, f"gold ETF {code} (em)")
     if r is not None:
-        return r
-    logger.warning(f"gold ETF {code} fallback to SGE")
-    return fetch_sge_gold_kline(days)
+        return _guard_etf_scale(r, code)
+    r = _retry(_sina, f"gold ETF {code} (sina)")
+    if r is not None:
+        return _guard_etf_scale(r, code)
+    logger.warning(f"gold ETF {code} 无可用数据源, 返回 None (不再 fallback SGE)")
+    return None
+
+
+def _guard_etf_scale(df: pd.DataFrame, code: str) -> Optional[pd.DataFrame]:
+    """ETF 单价合理性护栏: 黄金ETF 正常在 3~30 元/份, 超过 100 一定是串源。"""
+    if df is None or df.empty:
+        return None
+    close = pd.to_numeric(df["close"], errors="coerce")
+    bad = close[close > 100]
+    if len(bad) > 0:
+        logger.error(
+            f"gold ETF {code} 价格量纲异常 (close>100: {len(bad)} 行, "
+            f"max={close.max()}), 疑似串到 SGE 金价, 丢弃整批"
+        )
+        return None
+    return df
 
 
 def fetch_sge_gold_kline(days: int = 120) -> Optional[pd.DataFrame]:
-    """上金所基准金价 (Au99.99)，用早盘/晚盘均值"""
+    """上金所 Au99.99 基准金价 (元/克)。
+
+    优先 spot_hist_sge: 含完整 OHLC 且更新到最新交易日。
+    spot_golden_benchmark_sge 只有早/晚盘价且常滞后数个交易日(2026-11 实测停在 11-05),
+    作为备源。
+    """
     import akshare as ak
 
     def _do():
+        df = ak.spot_hist_sge(symbol="Au99.99")
+        if df is None or df.empty:
+            return None
+        df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+        df["volume"] = None
+        df["amount"] = None
+        df["turnover"] = None
+        df = df.tail(days)
+        return df[["date", "open", "close", "high", "low", "volume", "amount", "turnover"]]
+
+    r = _retry(_do, "sge gold (spot_hist_sge)")
+    if r is not None:
+        return r
+
+    def _do_bench():
         df = ak.spot_golden_benchmark_sge()
         if df is None or df.empty:
             return None
@@ -145,7 +206,8 @@ def fetch_sge_gold_kline(days: int = 120) -> Optional[pd.DataFrame]:
         df = df.tail(days)
         return df[["date", "open", "close", "high", "low", "volume", "amount", "turnover"]]
 
-    return _retry(_do, "sge gold")
+    logger.warning("sge gold fallback to spot_golden_benchmark_sge (数据可能滞后)")
+    return _retry(_do_bench, "sge gold (benchmark)")
 
 
 def fetch_benchmark_index(code: str = "000300", days: int = 120) -> Optional[pd.DataFrame]:

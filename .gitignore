@@ -1,35 +1,44 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-
-# 虚拟环境
+# 依赖目录
+node_modules/
 venv/
 .venv/
 env/
+__pycache__/
+*.pyc
+*.pyo
 
-# Node
-node_modules/
-npm-debug.log*
+# 构建产物
+dist/
+build/
+*.egg-info/
+
+# 运行时数据与日志
+logs/
+*.log
+data/sessions/
+data/rooms/
+*.db
+*.sqlite
+*.sqlite3
 
 # 环境变量与密钥
 .env
 .env.*
 *.key
 *.pem
+config.local.*
 
-# 日志与缓存
-logs/
-*.log
+# 备份文件
 *.bak
-*.tmp
+*.bak-*
+*.orig
+*.rej
 
-# 数据库
-*.db
-*.sqlite3
-
-# 编辑器 / 系统
+# 编辑器与系统
 .vscode/
 .idea/
 .DS_Store
+Thumbs.db
+
+# OpenClaw 本地配置 (不入库)
+.openclaw/
