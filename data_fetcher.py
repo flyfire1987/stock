@@ -72,29 +72,92 @@ def fetch_stock_kline(code: str, days: int = 120) -> Optional[pd.DataFrame]:
     return _retry(_em, f"stock {code} (em)")
 
 
-def fetch_stock_market_cap(code: str) -> Optional[Dict]:
-    """拉市值(单次)"""
+def _market_cap_etf_spot(code: str) -> Optional[Dict]:
+    # ETF 市值源: 东财 fund_etf_spot_em 一次拿到全市场 ETF 快照.
+    # 单只的 stock_individual_info_em 不支持 ETF (返回标量, 无法 zip 成 item/value),
+    # 而 em 的历史接口又经常挂, 所以 ETF 走批量快照这条独立的路.
     import akshare as ak
     try:
+        df = ak.fund_etf_spot_em()
+        if df is None or df.empty or "总市值" not in df.columns:
+            return None
+        row = df[df["代码"] == code]
+        if row.empty:
+            return None
+        cap = row.iloc[0].get("总市值")
+        if cap is None:
+            return None
+        circ = row.iloc[0].get("流通市值")
+        return {
+            "market_cap": float(cap),
+            "circulating_market_cap": float(circ) if circ is not None else None,
+            "pe": None,
+        }
+    except Exception as e:
+        logger.warning(f"fetch market_cap etf_spot {code}: {e}")
+        return None
+
+
+def _market_cap_baidu(code: str) -> Optional[Dict]:
+    """百度股市通市值备源。单位是亿元，换算成元后与 em 主源口径一致。"""
+    import akshare as ak
+    try:
+        df = ak.stock_zh_valuation_baidu(symbol=code, indicator="总市值", period="近一年")
+        if df is None or df.empty:
+            return None
+        value = df.iloc[-1].get("value")
+        if value is None:
+            return None
+        return {
+            "market_cap": float(value) * 1e8,
+            "circulating_market_cap": None,
+            "pe": None,
+        }
+    except Exception as e:
+        logger.warning(f"fetch market_cap baidu {code}: {e}")
+        return None
+
+
+def fetch_stock_market_cap(code: str) -> Optional[Dict]:
+    """拉市值(单次)：主源 em(东方财富) -> 备源 百度股市通。
+
+    em 是单点接口，接口抽风时整条链路就断；备源走不同域名，能扛住单点故障。
+    """
+    import akshare as ak
+
+    def _to_float(v):
+        try:
+            return float(str(v).replace(",", ""))
+        except (ValueError, TypeError):
+            return None
+
+    def _em():
         df = ak.stock_individual_info_em(symbol=code)
         if df is None or df.empty:
             return None
         info = dict(zip(df["item"], df["value"]))
-
-        def _to_float(v):
-            try:
-                return float(str(v).replace(",", ""))
-            except (ValueError, TypeError):
-                return None
-
+        cap = _to_float(info.get("总市值"))
+        if cap is None:
+            return None
         return {
-            "market_cap": _to_float(info.get("总市值")),
+            "market_cap": cap,
             "circulating_market_cap": _to_float(info.get("流通市值")),
             "pe": _to_float(info.get("市盈率(动)")),
         }
-    except Exception as e:
-        logger.warning(f"fetch market_cap {code}: {e}")
-        return None
+
+    # ETF/LOF 前缀: 个股接口不支持, 走批量快照, 别浪费重试次数
+    if code.startswith(("51", "52", "56", "58", "15", "16")):
+        result = _retry(lambda: _market_cap_etf_spot(code), f"market_cap {code} (etf_spot)")
+        if result is not None:
+            return result
+
+    result = _retry(_em, f"market_cap {code} (em)")
+    if result is not None:
+        return result
+    result = _retry(lambda: _market_cap_baidu(code), f"market_cap {code} (baidu)")
+    if result is not None:
+        return result
+    return _retry(lambda: _market_cap_etf_spot(code), f"market_cap {code} (etf_spot)")
 
 
 def fetch_gold_etf_kline(code: str, days: int = 120) -> Optional[pd.DataFrame]:
@@ -236,10 +299,17 @@ def save_kline(code: str, df: pd.DataFrame):
         r.get("turnover"),
     ) for _, r in df.iterrows()]
     with conn() as c:
+        # 不能用 INSERT OR REPLACE：REPLACE 先删行再插入，而插入列里没有 market_cap，
+        # 于是每次刷新都会把已存的市值抹成 NULL。改用 UPSERT，只更新行情字段。
         c.executemany(
-            """INSERT OR REPLACE INTO kline
+            """INSERT INTO kline
                (code,date,open,close,high,low,volume,amount,turnover)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?)
+               ON CONFLICT(code,date) DO UPDATE SET
+                 open=excluded.open, close=excluded.close,
+                 high=excluded.high, low=excluded.low,
+                 volume=excluded.volume, amount=excluded.amount,
+                 turnover=excluded.turnover""",
             rows,
         )
         cutoff = (datetime.now() - timedelta(days=KEEP_DAYS)).strftime("%Y-%m-%d")
@@ -247,13 +317,72 @@ def save_kline(code: str, df: pd.DataFrame):
     return len(rows)
 
 
-def update_today_market_cap(code: str, market_cap: Optional[float]):
+def update_today_market_cap(code: str, market_cap: Optional[float]) -> int:
+    """把当日市值写到该标的最新一根 K 线上，返回命中的行数。
+
+    凌晨跑批时当天 K 线还没生成，WHERE date=today 会 0 行命中且静默无效，
+    必须写到 MAX(date) 才是最近一个交易日的市值快照。
+    """
     if market_cap is None:
-        return
-    today = datetime.now().strftime("%Y-%m-%d")
+        return 0
     with conn() as c:
-        c.execute("UPDATE kline SET market_cap=? WHERE code=? AND date=?",
-                  (market_cap, code, today))
+        cur = c.execute(
+            """UPDATE kline SET market_cap=? WHERE code=? AND date=(
+                   SELECT MAX(date) FROM kline WHERE code=?)""",
+            (market_cap, code, code),
+        )
+        return cur.rowcount
+
+
+def backfill_market_cap_history(codes=None, period="近一年") -> Dict:
+    """用百度股市通回填历史市值（亿元 -> 元）。
+
+    em 单点接口只有当前值、没有历史序列；百度提供近一年每日总市值，
+    正好补齐 market_cap 的历史序列。
+    """
+    import akshare as ak
+
+    portfolio = config.get("portfolio", {})
+    if codes:
+        targets = list(codes)
+    else:
+        targets = [s["code"] for s in (portfolio.get("stocks") or [])
+                   if s.get("enabled", True)]
+
+    stats = {"ok": 0, "fail": [], "rows": 0}
+    for code in targets:
+        try:
+            df = ak.stock_zh_valuation_baidu(symbol=code, indicator="总市值", period=period)
+            if df is None or df.empty:
+                stats["fail"].append(f"{code}:empty")
+                continue
+            payload = []
+            for _, r in df.iterrows():
+                d = str(r.get("date"))[:10]
+                v = r.get("value")
+                if not d or v is None:
+                    continue
+                try:
+                    payload.append((float(v) * 1e8, code, d))
+                except (ValueError, TypeError):
+                    continue
+            if not payload:
+                stats["fail"].append(f"{code}:no_rows")
+                continue
+            with conn() as c:
+                c.executemany(
+                    "UPDATE kline SET market_cap=? WHERE code=? AND date=?",
+                    payload,
+                )
+                stats["rows"] += c.execute(
+                    "SELECT COUNT(*) FROM kline WHERE code=? AND market_cap IS NOT NULL",
+                    (code,),
+                ).fetchone()[0]
+            stats["ok"] += 1
+        except Exception as e:
+            logger.warning(f"backfill market_cap {code}: {e}")
+            stats["fail"].append(f"{code}:{type(e).__name__}")
+    return stats
 
 
 def refresh_all() -> Dict:
@@ -288,6 +417,9 @@ def refresh_all() -> Dict:
             df = fetch_sge_gold_kline()
         if df is not None:
             n = save_kline(code, df)
+            if source == "akshare":
+                mc = fetch_stock_market_cap(code)
+                update_today_market_cap(code, mc.get("market_cap") if mc else None)
             results["gold"].append({"code": code, "name": g.get("name"), "rows": n})
         else:
             results["errors"].append(f"gold {code} failed")
